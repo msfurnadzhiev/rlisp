@@ -1,6 +1,8 @@
 #![allow(unused)]
 
 use std::fmt;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 use crate::exp::LispExp;
 use crate::env::LispEnv;
@@ -14,6 +16,7 @@ pub enum LispEval {
     Bool(bool),
     Number(f64),
     List(Vec<LispEval>),
+    Set(HashSet<LispEval>),
     Func(fn(&LispEval) -> Result<LispEval, EvalError>),
     Lambda(LispLambda),
 }
@@ -22,6 +25,29 @@ pub enum LispEval {
 pub struct LispLambda {
   params: Box<Vec<LispExp>>,
   body: Box<LispExp>,
+}
+
+
+impl PartialEq for LispEval {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (LispEval::Bool(a), LispEval::Bool(b)) => a == b,
+            (LispEval::Number(a), LispEval::Number(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for LispEval {}
+
+impl Hash for LispEval {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            LispEval::Bool(a) => a.to_string().hash(state),
+            LispEval::Number(a) => a.to_string().hash(state),
+            _ => format!("{}", self).hash(state)
+        }
+    }
 }
 
 pub fn eval(exp: LispExp, env: &mut LispEnv) -> Result<LispEval, EvalError> {
@@ -68,7 +94,6 @@ fn eval_symbol(symbol: String, args: &[LispExp], env: &mut LispEnv
 ) -> Result<LispEval, EvalError> {
 
     match symbol.as_str() {
-
         "if" => if_statement(args, env),
         "define" => define_variable(args, env),
         "lambda" => define_lambda(args, env),
@@ -78,7 +103,6 @@ fn eval_symbol(symbol: String, args: &[LispExp], env: &mut LispEnv
         }
     }
 }
-
 
 fn if_statement( args: &[LispExp], env: &mut LispEnv
 ) -> Result<LispEval, EvalError> {
@@ -126,15 +150,10 @@ fn define_function(args: &[LispExp], env: &mut LispEnv
 
         let fn_name: String = args[0].to_string();
 
-        // Collect argument definitions as a list of LispExp::Symbol
-        println!("{}", args[1]);
         let params: Vec<LispExp> = args[1 .. args.len()-1].to_vec();
 
-        // Add the function definition to the end
         let fn_def = args.last().unwrap().clone();
 
-        // Create Lambda and insert into the current scope
-        // let lambda_exp = define_lambda(&fn_def, env).unwrap();
         let lambda_exp = LispEval::Lambda(
             LispLambda {
                 params: Box::new(params),
@@ -155,15 +174,9 @@ fn define_lambda(args: &[LispExp], env: &mut LispEnv
         Err(EvalError::InvalidNumberOfArguments())            
     } 
     else {
-
-        // Collect argument definitions as a list of LispExp::Symbol
         let params: Vec<LispExp> = args[0 .. args.len()-1].to_vec();
-
-        // Add the function definition to the end
         let fn_def = args.last().unwrap().clone();
 
-        // Create Lambda and insert into the current scope
-        // let lambda_exp = define_lambda(&fn_def, env).unwrap();
         let lambda_exp = LispEval::Lambda(
             LispLambda {
                 params: Box::new(params),
@@ -197,27 +210,21 @@ fn call_function(symbol: &str, args: &[LispExp], env: &mut LispEnv
                 Err(EvalError::InvalidNumberOfArguments())
             } 
             else {
-                // Iterate over args and evalute each one
                 let ev_args: Vec<LispEval> = args[0..args.len()].iter()
                                                 .map(|a| eval(a.clone(), env)
                                                 .unwrap())
                                                 .collect();
                 
-                // Create new env to be the inherited sub-scope
                 let mut sub_env = env.clone();
                 
-                // Set the args as a sub_env variables
-                // Iterate over lambda from 0 .. len - 1 to get all args
                 for i  in 0 .. lambda.params.len() {
                     let arg_def = lambda.params[i].to_string();
                     let arg_ev = ev_args.get(i).unwrap().clone();
                     sub_env.add(&arg_def, arg_ev);
                 }
 
-                // Get the lambda expression
                 let fn_exp:LispExp = *lambda.body.clone();
 
-                // Evalute lambda function call in new env and return the result
                 Ok(eval(fn_exp, &mut sub_env)?)
             }
         }
@@ -239,7 +246,13 @@ impl fmt::Display for LispEval {
                 ).collect();
                 format!("({})", items.join(" "))
             },
-            _ => format!("Interpretation cannot be displayed!")
+            LispEval::Set(set) => {
+                let items:Vec<String> = set.iter().map(
+                    |item| item.to_string()
+                ).collect();
+                format!("{{{}}}", items.join(" "))
+            },
+            _ => format!("<function>")
         };
         write!(f, "{}", str)
     }

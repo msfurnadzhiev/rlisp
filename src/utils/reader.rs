@@ -1,4 +1,3 @@
-use crate::eval::LispEval;
 use crate::utils::exceptions::ReaderError;
 
 use std::io::BufRead;

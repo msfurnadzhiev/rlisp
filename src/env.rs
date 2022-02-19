@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 // use crate::exp::LispExp;
 use crate::eval::LispEval;
@@ -31,6 +32,13 @@ impl LispEnv {
 pub fn default_env() -> LispEnv {
     let mut env = LispEnv::new();
 
+    env.add("print", LispEval::Func(print));
+
+    // Logical operators
+    env.add("not", LispEval::Func(not));
+    env.add("and", LispEval::Func(and));
+    env.add("or", LispEval::Func(or));
+
     // Basic math functions
     env.add("+", LispEval::Func(add));
     env.add("-", LispEval::Func(sub));
@@ -51,18 +59,59 @@ pub fn default_env() -> LispEnv {
 
     // List operations
     env.add("list", LispEval::Func(to_list));
-    env.add("head", LispEval::Func(list_head));
-    // tail
-    // concat
+    env.add("head", LispEval::Func(head));
+    env.add("cons", LispEval::Func(cons));
 
     // Set operations
-    env.add("set", LispEval::Func(to_list));
-    // some set operations
-
-    // To deine some functional methods: map, apply, ...
+    env.add("set", LispEval::Func(to_set));
+    env.add("union", LispEval::Func(union));
+    env.add("inter", LispEval::Func(intersection));
 
     env
 }
+
+
+fn unary_logic_operator(args: &LispEval, op: fn(bool)->bool
+) -> Result<LispEval, EvalError> {
+    let mut res = false;
+    if let LispEval::List(list) = args {
+        if let LispEval::Bool(b) = list[0] {
+            res = op(b)
+        }
+    }
+    Ok(LispEval::Bool(res))
+}
+
+fn not(args: &LispEval) -> Result<LispEval, EvalError>  {
+    unary_logic_operator(args, |x| !x)
+}
+
+fn binary_logic_operator(args: &LispEval, op: fn(bool, bool)->bool
+) -> Result<LispEval, EvalError> {
+    
+    let mut res = false;
+    if let LispEval::List(list) = args {
+        for (i, arg) in list.iter().enumerate() {
+            if let LispEval::Bool(b) = arg {
+                if i == 0 {
+                    res = *b;
+                } else {
+                    res = op(res, *b);
+                }
+            }
+        }
+    }
+    Ok(LispEval::Bool(res))
+}
+
+fn and(args: &LispEval) -> Result<LispEval, EvalError>  {
+    binary_logic_operator(args, |x,y| x&&y)
+}
+
+fn or(args: &LispEval) -> Result<LispEval, EvalError>  {
+    binary_logic_operator(args, |x,y| x||y)
+}
+
 
 
 fn accumulate(args: &LispEval, op: fn(f64, f64)->f64
@@ -83,6 +132,7 @@ fn accumulate(args: &LispEval, op: fn(f64, f64)->f64
     Ok(LispEval::Number(res))
 }
 
+
 fn add(args: &LispEval) -> Result<LispEval, EvalError>  {
     accumulate(args, |x,y| x+y)
 }
@@ -102,7 +152,6 @@ fn dev(args: &LispEval) -> Result<LispEval, EvalError> {
 fn modulus(args: &LispEval) -> Result<LispEval, EvalError> {
     accumulate(args, |x,y| x%y)
 }
-
 
 fn compare(args: &LispEval, rel: fn(f64, f64)->bool
 ) -> Result<LispEval, EvalError> 
@@ -149,7 +198,7 @@ fn to_list(args: &LispEval) -> Result<LispEval, EvalError> {
     }
 }
 
-fn list_head(args: &LispEval) -> Result<LispEval, EvalError> {
+fn head(args: &LispEval) -> Result<LispEval, EvalError> {
     if let LispEval::List(args_vec) = args {
        if args_vec.len() > 1 {
            return Err(EvalError::InvalidNumberOfArguments ());
@@ -164,11 +213,81 @@ fn list_head(args: &LispEval) -> Result<LispEval, EvalError> {
     }
 }
 
-// fn to_set(args: &LispEval) -> Result<LispEval, EvalError> {
-//     match args {
-//         LispEval::List(values) => {
-//             Ok(LispEval::List(values.dedup()))
-//         },
-//         _ => Err(EvalError::InvalidAgrumentType())
-//     }
-// }
+fn cons(args: &LispEval) -> Result<LispEval, EvalError> {
+    if let LispEval::List(args_vec) = args {
+        if args_vec.len() != 2 {
+            return Err(EvalError::InvalidNumberOfArguments ());
+        }
+        let mut result = Vec::new();
+        result.push(args_vec[0].clone());
+
+        if let LispEval::List(list) = &args_vec[1] {
+            for item in list {
+                result.push(item.clone());
+            }
+        }
+        Ok(LispEval::List(result))
+    }
+    else {
+        Err(EvalError::UnexpectedExpression())
+    }
+}
+
+fn to_set(args: &LispEval) -> Result<LispEval, EvalError> {
+    let mut set = HashSet::new();
+
+    if let LispEval::List(list) = args {
+        for item in list {
+            set.insert(item.clone());
+        }
+    }  
+    Ok(LispEval::Set(set))
+}
+
+fn print(args: &LispEval) -> Result<LispEval, EvalError> {
+    if let LispEval::List(args_vec) = args {
+        if args_vec.len() > 1 {
+            return Err(EvalError::InvalidNumberOfArguments ());
+        }
+        println!("{}", &args_vec[0]);
+        Ok(args_vec[0].clone())
+     }
+     else {
+         Err(EvalError::UnexpectedExpression())
+     }
+}
+
+
+fn union(args: &LispEval) -> Result<LispEval, EvalError> {
+    let mut result = HashSet::<LispEval>::new();
+    if let LispEval::List(args_vec) = args {
+        for item in args_vec {
+            if let LispEval::Set(set) = item {
+                result.extend(set.iter().cloned());
+            }
+        }
+        Ok(LispEval::Set(result))
+     }
+     else {
+         Err(EvalError::UnexpectedExpression())
+     }
+}
+
+fn intersection(args: &LispEval) -> Result<LispEval, EvalError> {
+    let mut result = HashSet::<LispEval>::new();
+    if let LispEval::List(args_vec) = args {
+        for (i, item) in args_vec.iter().enumerate() {
+            if let LispEval::Set(set) = item {
+                if i == 0 {
+                    result = set.clone();
+                } else {
+                    result = result.intersection(&set).cloned().collect();
+                }
+            }
+        }
+        Ok(LispEval::Set(result))
+     }
+     else {
+        Err(EvalError::UnexpectedExpression())
+     }
+}

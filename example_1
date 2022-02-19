@@ -1,0 +1,5 @@
+(fn fib  n (if (< n 2) 1 (+ (fib (- n 1)) (fib (- n 2)))))
+
+(define fib_series (lambda a b (if (= a b) '() (cons (fib a) (fib_series (+ a 1) b)))))
+
+(print (fib_series 0 10))

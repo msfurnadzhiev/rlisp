@@ -62,7 +62,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let value = eval(exp.clone(), &mut env).unwrap();
     
         debug!("{} -> {}", exp, value);
-        println!("{}", value);
     }
 
     Ok(())
