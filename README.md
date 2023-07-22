@@ -1,1 +1,1 @@
-## A small List interpreter written in Rust.
+## Lisp interpreter written in Rust.
